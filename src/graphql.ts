@@ -17,6 +17,7 @@ import {
   GraphQLInputType,
   GraphQLList,
   GraphQLFieldConfigArgumentMap,
+  GraphQLScalarType,
 } from 'graphql'
 import {
   parse,
@@ -34,7 +35,7 @@ import {
   SetType,
   BaseType,
 } from '@creditkarma/thrift-parser'
-import { Int64 } from './int64'
+import { GraphqlInt64, GraphqlSet, GraphqlMap } from './types'
 
 type Dict<T> = {
   [key: string]: T
@@ -146,18 +147,11 @@ function convertListType(node: ListType, namespace: string, isInput: boolean) {
 }
 
 function convertMapType(node: MapType, namespace: string, isInput: boolean) {
-  // return new GraphQLScalarType({
-  // name: node.,
-  // description: commentsToDescription(field.comments),
-  // serialize: value => value,
-  // })
-  // TODO:
-  return GraphQLBoolean
+  return GraphqlMap
 }
 
 function convertSetType(node: SetType, namespace: string, isInput: boolean) {
-  // TODO:
-  return GraphQLBoolean
+  return GraphqlSet
 }
 
 function convertStruct(
@@ -300,7 +294,7 @@ function convert(
     case SyntaxType.DoubleKeyword:
       return GraphQLInt
     case SyntaxType.I64Keyword:
-      return Int64
+      return GraphqlInt64
     case SyntaxType.StringKeyword:
       return GraphQLString
     case SyntaxType.BoolKeyword:
