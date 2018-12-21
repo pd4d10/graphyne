@@ -3,10 +3,13 @@
   "version": "0.0.1",
   "description": "",
   "main": "lib/index.js",
+  "files": [
+    "lib"
+  ],
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "watch": "tsc --watch",
-    "build": "tsc"
+    "build": "rm -rf lib && tsc"
   },
   "repository": {
     "type": "git",
@@ -21,8 +24,8 @@
   },
   "dependencies": {
     "@creditkarma/thrift-parser": "^1.1.4",
-    "@types/express-graphql": "^0.6.2",
-    "express-graphql": "^0.7.1",
+    "@types/graphql": "^14.0.3",
+    "@types/node": "^10.12.18",
     "graphql": "^14.0.2"
   }
 }

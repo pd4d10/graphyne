@@ -22,10 +22,13 @@ export const GraphqlMap = new GraphQLScalarType({
   name: 'Map',
   serialize: value => {
     if (value instanceof Map) {
-      return [...value].reduce((result, [k, v]) => {
-        result[k] = v
-        return result
-      }, {})
+      return [...value].reduce(
+        (result, [k, v]) => {
+          result[k] = v
+          return result
+        },
+        {} as { [key: string]: any },
+      )
     }
 
     return value

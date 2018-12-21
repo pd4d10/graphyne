@@ -17,7 +17,6 @@ import {
   GraphQLInputType,
   GraphQLList,
   GraphQLFieldConfigArgumentMap,
-  GraphQLScalarType,
 } from 'graphql'
 import {
   parse,
@@ -255,12 +254,7 @@ type Node =
   | Identifier
   | BaseType
 
-function convert(
-  node: Node,
-  namespace: string,
-  isInput: boolean,
-  structName?: string,
-): GraphQLType {
+function convert(node: Node, namespace: string, isInput: boolean): GraphQLType {
   // console.log(namespace)
 
   switch (node.type) {
@@ -301,7 +295,8 @@ function convert(
       return GraphQLBoolean
 
     default:
-      throw new Error('node type error: ' + node.type)
+      console.log(node)
+      throw new Error('node type error')
   }
 }
 
