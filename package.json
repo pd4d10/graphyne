@@ -1,0 +1,28 @@
+{
+  "name": "thrift-utils",
+  "version": "0.0.1",
+  "description": "",
+  "main": "lib/index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "watch": "tsc --watch",
+    "build": "tsc"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pd4d10/thrift-utils.git"
+  },
+  "keywords": [],
+  "author": "Rongjian Zhang <pd4d10@gmail.com>",
+  "license": "MIT",
+  "homepage": "https://github.com/pd4d10/thrift-utils#readme",
+  "devDependencies": {
+    "typescript": "^3.2.2"
+  },
+  "dependencies": {
+    "@creditkarma/thrift-parser": "^1.1.4",
+    "@types/express-graphql": "^0.6.2",
+    "express-graphql": "^0.7.1",
+    "graphql": "^14.0.2"
+  }
+}
