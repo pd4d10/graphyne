@@ -34,6 +34,7 @@ import {
   SetType,
   BaseType,
 } from '@creditkarma/thrift-parser'
+import { Int64 } from './int64'
 
 type Dict<T> = {
   [key: string]: T
@@ -294,11 +295,12 @@ function convert(
     case SyntaxType.I8Keyword:
     case SyntaxType.I16Keyword:
     case SyntaxType.I32Keyword:
-    case SyntaxType.I64Keyword:
     case SyntaxType.BinaryKeyword:
     case SyntaxType.ByteKeyword:
     case SyntaxType.DoubleKeyword:
       return GraphQLInt
+    case SyntaxType.I64Keyword:
+      return Int64
     case SyntaxType.StringKeyword:
       return GraphQLString
     case SyntaxType.BoolKeyword:
