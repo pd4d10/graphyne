@@ -310,43 +310,49 @@ function convert(
 }
 
 export function thriftToSchema(
-  file: string,
+  files: string[],
   resolveFunc: Function,
 ): GraphQLSchema {
-  const namespace = loadThriftAstFromFile(file)
-  const ast = astMapping[namespace]
+  const services = files.map(file => {
+    const namespace = loadThriftAstFromFile(file)
+    const ast = astMapping[namespace]
 
-  const service = ast.body.find(
-    statement => statement.type === SyntaxType.ServiceDefinition,
-  ) as ServiceDefinition
+    const service = ast.body.find(
+      statement => statement.type === SyntaxType.ServiceDefinition,
+    ) as ServiceDefinition
 
-  if (!service) {
-    throw new Error('no service at file: ' + file)
-  }
-  // console.log(Object.keys(astMapping))
+    if (!service) {
+      throw new Error('no service at file: ' + file)
+    }
+
+    return { service, namespace }
+  })
 
   return new GraphQLSchema({
     query: new GraphQLObjectType({
-      name: service.name.value,
-      fields: service.functions.reduce(
-        (dict, func) => {
-          dict[func.name.value] = {
-            type: convert(func.returnType, namespace, false),
-            description: commentsToDescription(func.comments),
-            args: func.fields.reduce(
-              (dict, field) => {
-                dict[field.name.value] = {
-                  type: convert(field.fieldType, namespace, true),
-                  description: commentsToDescription(field.comments),
-                }
-                return dict
+      name: 'Query',
+      fields: services.reduce(
+        (dict, { service, namespace }) => {
+          service.functions.forEach(func => {
+            dict[func.name.value] = {
+              type: convert(func.returnType, namespace, false),
+              description: commentsToDescription(func.comments),
+              args: func.fields.reduce(
+                (dict, field) => {
+                  dict[field.name.value] = {
+                    type: convert(field.fieldType, namespace, true),
+                    description: commentsToDescription(field.comments),
+                  }
+                  return dict
+                },
+                {} as GraphQLFieldConfigArgumentMap,
+              ),
+              resolve: async (source, args) => {
+                return resolveFunc(service.name.value, func.name.value, args)
               },
-              {} as GraphQLFieldConfigArgumentMap,
-            ),
-            resolve: async (source, args) => {
-              return resolveFunc(service.name.value, func.name.value, args)
-            },
-          }
+            }
+          })
+
           return dict
         },
         {} as Dict<GraphQLFieldConfig<any, any>>,
