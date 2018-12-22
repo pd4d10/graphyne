@@ -2,6 +2,7 @@ import { GraphQLScalarType, Kind } from 'graphql'
 
 export const GraphqlInt64 = new GraphQLScalarType({
   name: 'Int64',
+  description: 'Use string or number',
   serialize: value => {
     return value.toString()
   },
@@ -20,6 +21,7 @@ export const GraphqlInt64 = new GraphQLScalarType({
 
 export const GraphqlMap = new GraphQLScalarType({
   name: 'Map',
+  description: 'Use plain object',
   serialize: value => {
     if (value instanceof Map) {
       return [...value].reduce(
@@ -37,6 +39,7 @@ export const GraphqlMap = new GraphQLScalarType({
 
 export const GraphqlSet = new GraphQLScalarType({
   name: 'Set',
+  description: 'Use Array',
   serialize: value => {
     if (value instanceof Set) {
       return [...value]

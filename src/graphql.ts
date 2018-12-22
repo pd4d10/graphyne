@@ -122,6 +122,7 @@ function convertEnumType(
   if (!typeMapping[name]) {
     typeMapping[name] = new GraphQLEnumType({
       name: name,
+      description: commentsToDescription(node.comments),
       values: node.members.reduce(
         (dict, member, index) => {
           dict[member.name.value] = {
@@ -168,11 +169,13 @@ function convertStruct(
     if (!inputTypeMapping[name]) {
       inputTypeMapping[name] = new GraphQLInputObjectType({
         name,
+        description: commentsToDescription(struct.comments),
         fields: () =>
           struct.fields.reduce(
             (dict, field) => {
               dict[field.name.value] = {
                 type: convert(field, namespace, isInput) as GraphQLInputType,
+                description: commentsToDescription(field.comments),
               }
               return dict
             },
@@ -185,11 +188,13 @@ function convertStruct(
     if (!outputTypeMapping[name]) {
       outputTypeMapping[name] = new GraphQLObjectType({
         name,
+        description: commentsToDescription(struct.comments),
         fields: () =>
           struct.fields.reduce(
             (dict, field) => {
               dict[field.name.value] = {
                 type: convert(field, namespace, isInput) as GraphQLOutputType,
+                description: commentsToDescription(field.comments),
               }
               return dict
             },
@@ -328,6 +333,7 @@ export function thriftToSchema(
   return new GraphQLSchema({
     query: new GraphQLObjectType({
       name: 'Query',
+      description: 'The root query',
       fields: services.reduce(
         (dict, { service, namespace }) => {
           service.functions.forEach(func => {
