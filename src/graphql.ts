@@ -123,12 +123,16 @@ function convertEnumType(
     typeMapping[name] = new GraphQLEnumType({
       name: name,
       values: node.members.reduce(
-        (dict, member) => {
-          if (!member.initializer) {
-            throw new Error('member initializer is null: ' + name)
-          }
+        (dict, member, index) => {
           dict[member.name.value] = {
-            value: parseInt(member.initializer.value.value, 10),
+            value: member.initializer
+              ? parseInt(
+                  member.initializer.value.value,
+                  member.initializer.value.type === SyntaxType.HexLiteral
+                    ? 16
+                    : 10,
+                )
+              : index,
             description: commentsToDescription(member.comments),
           }
           return dict
