@@ -145,11 +145,11 @@ function convertListType(node: ListType, namespace: string, isInput: boolean) {
   return new GraphQLList(convert(node.valueType, namespace, isInput))
 }
 
-function convertMapType(node: MapType, namespace: string, isInput: boolean) {
+function convertMapType() {
   return GraphqlMap
 }
 
-function convertSetType(node: SetType, namespace: string, isInput: boolean) {
+function convertSetType() {
   return GraphqlSet
 }
 
@@ -164,15 +164,16 @@ function convertStruct(
     if (!inputTypeMapping[name]) {
       inputTypeMapping[name] = new GraphQLInputObjectType({
         name,
-        fields: struct.fields.reduce(
-          (dict, field) => {
-            dict[field.name.value] = {
-              type: convert(field, namespace, isInput) as GraphQLInputType,
-            }
-            return dict
-          },
-          {} as Dict<GraphQLInputFieldConfig>,
-        ),
+        fields: () =>
+          struct.fields.reduce(
+            (dict, field) => {
+              dict[field.name.value] = {
+                type: convert(field, namespace, isInput) as GraphQLInputType,
+              }
+              return dict
+            },
+            {} as Dict<GraphQLInputFieldConfig>,
+          ),
       })
     }
     return inputTypeMapping[name]
@@ -180,15 +181,16 @@ function convertStruct(
     if (!outputTypeMapping[name]) {
       outputTypeMapping[name] = new GraphQLObjectType({
         name,
-        fields: struct.fields.reduce(
-          (dict, field) => {
-            dict[field.name.value] = {
-              type: convert(field, namespace, isInput) as GraphQLOutputType,
-            }
-            return dict
-          },
-          {} as Dict<GraphQLFieldConfig<any, any>>,
-        ),
+        fields: () =>
+          struct.fields.reduce(
+            (dict, field) => {
+              dict[field.name.value] = {
+                type: convert(field, namespace, isInput) as GraphQLOutputType,
+              }
+              return dict
+            },
+            {} as Dict<GraphQLFieldConfig<any, any>>,
+          ),
       })
     }
     return outputTypeMapping[name]
