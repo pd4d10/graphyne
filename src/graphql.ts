@@ -284,9 +284,9 @@ function convert(node: Node, namespace: string, isInput: boolean): GraphQLType {
     case SyntaxType.ListType:
       return convertListType(node, namespace, isInput)
     case SyntaxType.MapType:
-      return convertMapType(node, namespace, isInput)
+      return convertMapType()
     case SyntaxType.SetType:
-      return convertSetType(node, namespace, isInput)
+      return convertSetType()
     case SyntaxType.Identifier:
       return findIdentifier(node, namespace, isInput)
 
@@ -350,8 +350,15 @@ export function thriftToSchema(
                 },
                 {} as GraphQLFieldConfigArgumentMap,
               ),
-              resolve: async (source, args) => {
-                return resolveFunc(service.name.value, func.name.value, args)
+              resolve: async (source, args, ctx, info) => {
+                return resolveFunc(
+                  source,
+                  args,
+                  ctx,
+                  info,
+                  service.name.value,
+                  func.name.value,
+                )
               },
             }
           })
