@@ -34,7 +34,7 @@ import {
   SetType,
   BaseType,
 } from '@creditkarma/thrift-parser'
-import { GraphqlInt64, GraphqlSet, GraphqlMap } from './types'
+import { GraphqlInt64, GraphqlSet, GraphqlMap, ResolveFunc } from './types'
 
 type Dict<T> = {
   [key: string]: T
@@ -313,7 +313,7 @@ function convert(node: Node, namespace: string, isInput: boolean): GraphQLType {
 
 export function thriftToSchema(
   files: string[],
-  resolveFunc: Function,
+  resolveFunc: ResolveFunc,
 ): GraphQLSchema {
   const services = files.map(file => {
     const namespace = loadThriftAstFromFile(file)

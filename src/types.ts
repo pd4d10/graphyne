@@ -1,4 +1,13 @@
-import { GraphQLScalarType, Kind } from 'graphql'
+import { GraphQLScalarType, Kind, GraphQLResolveInfo } from 'graphql'
+
+export type ResolveFunc = (
+  source: any,
+  args: any,
+  ctx: any,
+  info: GraphQLResolveInfo,
+  serviceName: string,
+  funcName: string,
+) => any
 
 export const GraphqlInt64 = new GraphQLScalarType({
   name: 'Int64',
