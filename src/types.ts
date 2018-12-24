@@ -19,31 +19,35 @@ export const GraphqlInt64 = new GraphQLScalarType({
   },
 })
 
+// serialize function for map and set
+// these data structures can be nested
+function serializeScalar(value: any): any {
+  if (value instanceof Set) {
+    return [...value].map(serializeScalar)
+  }
+
+  if (value instanceof Map) {
+    return [...value].reduce(
+      (result, [k, v]) => {
+        // for key, call toString by default
+        result[k] = serializeScalar(v)
+        return result
+      },
+      {} as { [key: string]: any },
+    )
+  }
+
+  return value
+}
+
 export const GraphqlMap = new GraphQLScalarType({
   name: 'Map',
   description: 'Use plain object',
-  serialize: value => {
-    if (value instanceof Map) {
-      return [...value].reduce(
-        (result, [k, v]) => {
-          result[k] = v
-          return result
-        },
-        {} as { [key: string]: any },
-      )
-    }
-
-    return value
-  },
+  serialize: serializeScalar,
 })
 
 export const GraphqlSet = new GraphQLScalarType({
   name: 'Set',
   description: 'Use Array',
-  serialize: value => {
-    if (value instanceof Set) {
-      return [...value]
-    }
-    return value
-  },
+  serialize: serializeScalar,
 })
