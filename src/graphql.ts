@@ -34,7 +34,7 @@ import {
   SetType,
   BaseType,
 } from '@creditkarma/thrift-parser'
-import { GraphqlInt64, GraphqlSet, GraphqlMap, ResolveFunc } from './types'
+import { GraphqlInt64, GraphqlSet, GraphqlMap, Options } from './types'
 
 type Dict<T> = {
   [key: string]: T
@@ -311,31 +311,33 @@ function convert(node: Node, namespace: string, isInput: boolean): GraphQLType {
   }
 }
 
-export function thriftToSchema(
-  files: string[],
-  resolveFunc: ResolveFunc,
-): GraphQLSchema {
-  const services = files.map(file => {
-    const namespace = loadThriftAstFromFile(file)
-    const ast = astMapping[namespace]
+export function thriftToSchema({
+  services: serviceMapping,
+  resolveFunc,
+}: Options): GraphQLSchema {
+  const services = Object.entries(serviceMapping).map(
+    ([serviceName, { file }]) => {
+      const namespace = loadThriftAstFromFile(file)
+      const ast = astMapping[namespace]
 
-    const service = ast.body.find(
-      statement => statement.type === SyntaxType.ServiceDefinition,
-    ) as ServiceDefinition
+      const service = ast.body.find(
+        statement => statement.type === SyntaxType.ServiceDefinition,
+      ) as ServiceDefinition
 
-    if (!service) {
-      throw new Error('no service at file: ' + file)
-    }
+      if (!service) {
+        throw new Error('no service at file: ' + file)
+      }
 
-    return { service, namespace }
-  })
+      return { service, serviceName, namespace }
+    },
+  )
 
   return new GraphQLSchema({
     query: new GraphQLObjectType({
       name: 'Query',
       description: 'The root query',
       fields: services.reduce(
-        (dict, { service, namespace }) => {
+        (dict, { service, serviceName, namespace }) => {
           service.functions.forEach(func => {
             dict[func.name.value] = {
               type: convert(func.returnType, namespace, false),
@@ -356,7 +358,7 @@ export function thriftToSchema(
                   args,
                   ctx,
                   info,
-                  service.name.value,
+                  serviceName,
                   func.name.value,
                 )
               },
