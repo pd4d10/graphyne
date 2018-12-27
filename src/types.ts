@@ -28,6 +28,7 @@ export const GraphqlInt64 = new GraphQLScalarType({
   parseLiteral(ast) {
     switch (ast.kind) {
       case Kind.INT:
+      case Kind.STRING:
         return ast.value
       default:
         throw new Error('kind should be int, get: ' + ast.kind)
