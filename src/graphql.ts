@@ -314,6 +314,7 @@ function convert(node: Node, namespace: string, isInput: boolean): GraphQLType {
 export function thriftToSchema({
   services: serviceMapping,
   resolveFunc,
+  getQueryName = (service, func) => service + func,
 }: Options): GraphQLSchema {
   const services = Object.entries(serviceMapping).map(
     ([serviceName, { file }]) => {
@@ -339,7 +340,9 @@ export function thriftToSchema({
       fields: services.reduce(
         (dict, { service, serviceName, namespace }) => {
           service.functions.forEach(func => {
-            dict[func.name.value] = {
+            const queryName = getQueryName(service.name.value, func.name.value)
+
+            dict[queryName] = {
               type: convert(func.returnType, namespace, false),
               description: commentsToDescription(func.comments),
               args: func.fields.reduce(

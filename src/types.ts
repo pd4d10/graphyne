@@ -14,6 +14,7 @@ export interface Options {
     serviceName: string,
     funcName: string,
   ) => any
+  getQueryName?: (service: string, func: string) => string
 }
 
 export const GraphqlInt64 = new GraphQLScalarType({

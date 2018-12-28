@@ -7,9 +7,10 @@ export function createMiddleware(
   services: Options['services'],
   resolveFunc: Options['resolveFunc'],
   options: graphqlHttp.Options,
+  getQueryName?: Options['getQueryName'],
 ): RequestHandler {
   return graphqlHttp({
     ...options,
-    schema: thriftToSchema({ services, resolveFunc }),
+    schema: thriftToSchema({ services, resolveFunc, getQueryName }),
   })
 }
