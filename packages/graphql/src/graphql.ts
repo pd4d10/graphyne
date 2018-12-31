@@ -248,7 +248,7 @@ function convertField(
   namespace: string,
   isInput: boolean,
 ) {
-  let type = convert(field.fieldType, namespace, isInput)
+  let type = convert(field.fieldType as Node, namespace, isInput)
   if (field.requiredness === 'required') {
     type = GraphQLNonNull(type)
   }
@@ -317,19 +317,19 @@ export function thriftToSchema({
   getQueryName = (service, func) => service + func,
 }: Options): GraphQLSchema {
   const services = Object.entries(serviceMapping).map(
-    ([serviceName, { file }]) => {
+    ([serviceName, { file, funcs }]) => {
       const namespace = loadThriftAstFromFile(file)
       const ast = astMapping[namespace]
 
-      const service = ast.body.find(
+      const serviceAst = ast.body.find(
         statement => statement.type === SyntaxType.ServiceDefinition,
       ) as ServiceDefinition
 
-      if (!service) {
+      if (!serviceAst) {
         throw new Error('no service at file: ' + file)
       }
 
-      return { service, serviceName, namespace }
+      return { serviceAst, serviceName, namespace, funcs }
     },
   )
 
@@ -338,17 +338,31 @@ export function thriftToSchema({
       name: 'Query',
       description: 'The root query',
       fields: services.reduce(
-        (dict, { service, serviceName, namespace }) => {
-          service.functions.forEach(func => {
-            const queryName = getQueryName(service.name.value, func.name.value)
+        (dict, { serviceAst, serviceName, namespace, funcs }) => {
+          serviceAst.functions.forEach(func => {
+            if (!funcs.includes(func.name.value)) return
 
+            const queryName = getQueryName(
+              serviceAst.name.value,
+              func.name.value,
+            )
+
+            // TODO: fix types
             dict[queryName] = {
-              type: convert(func.returnType, namespace, false),
+              type: convert(
+                func.returnType as Node,
+                namespace,
+                false,
+              ) as GraphQLOutputType,
               description: commentsToDescription(func.comments),
               args: func.fields.reduce(
                 (dict, field) => {
                   dict[field.name.value] = {
-                    type: convert(field.fieldType, namespace, true),
+                    type: convert(
+                      field.fieldType as Node,
+                      namespace,
+                      true,
+                    ) as GraphQLInputType,
                     description: commentsToDescription(field.comments),
                   }
                   return dict

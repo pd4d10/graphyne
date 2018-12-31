@@ -1,36 +1,14 @@
 {
-  "name": "thrift-utils",
-  "version": "0.0.4",
-  "description": "",
-  "main": "lib/index.js",
-  "files": [
-    "lib"
+  "private": true,
+  "workspaces": [
+    "packages/*"
   ],
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "watch": "tsc --watch",
-    "build": "rm -rf lib && tsc"
+    "clean": "rm -rf packages/*/lib",
+    "watch": "tsc --build --watch",
+    "build": "tsc --build"
   },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/pd4d10/thrift-utils.git"
-  },
-  "keywords": [],
-  "author": "Rongjian Zhang <pd4d10@gmail.com>",
-  "license": "MIT",
-  "homepage": "https://github.com/pd4d10/thrift-utils#readme",
   "devDependencies": {
-    "@types/express": "^4.16.0",
-    "@types/koa": "^2.0.47",
     "typescript": "^3.2.2"
-  },
-  "dependencies": {
-    "@creditkarma/thrift-parser": "^1.1.4",
-    "@types/express-graphql": "^0.6.2",
-    "@types/graphql": "^14.0.3",
-    "@types/node": "^10.12.18",
-    "express-graphql": "^0.7.1",
-    "graphql": "^14.0.2",
-    "koa-graphql": "^0.8.0"
   }
 }

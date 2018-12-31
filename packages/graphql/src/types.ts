@@ -4,6 +4,7 @@ export interface Options {
   services: {
     [serviceName: string]: {
       file: string
+      funcs: string[]
     }
   }
   resolveFunc: (
