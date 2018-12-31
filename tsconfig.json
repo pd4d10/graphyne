@@ -1,4 +1,4 @@
 {
   "files": [],
-  "references": [{ "path": "packages/graphql" }]
+  "references": [{ "path": "packages/graphql" }, { "path": "packages/client" }]
 }
