@@ -1,21 +1,20 @@
-import { GraphQLScalarType, Kind, GraphQLResolveInfo } from 'graphql'
+import { GraphQLScalarType, Kind } from 'graphql'
 
 export interface Options {
+  strict?: boolean
+  getQueryName?: (serviceName: string, funcName: string) => string
   services: {
     [serviceName: string]: {
       file: string
-      funcs: string[]
+      consul: string
+      funcs?: {
+        [funcName: string]: {
+          onRequest?: (request: any, ctx: any) => Promise<any>
+          onResponse?: (response: any, ctx: any) => Promise<any>
+        }
+      }
     }
   }
-  resolveFunc: (
-    source: any,
-    args: any,
-    ctx: any,
-    info: GraphQLResolveInfo,
-    serviceName: string,
-    funcName: string,
-  ) => any
-  getQueryName?: (service: string, func: string) => string
 }
 
 export const GraphqlInt64 = new GraphQLScalarType({

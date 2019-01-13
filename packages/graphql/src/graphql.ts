@@ -35,75 +35,53 @@ import {
   BaseType,
 } from '@creditkarma/thrift-parser'
 import { GraphqlInt64, GraphqlSet, GraphqlMap, Options } from './types'
+const { createClient } = require('@thrift/client')
+
+let rpcClient: any
 
 type Dict<T> = {
   [key: string]: T
 }
 
 const astMapping: Dict<ThriftDocument> = {}
-const fileMapping: Dict<string> = {}
-const identifierMapping: Dict<EnumDefinition | StructDefinition> = {}
+const identifierCountDict = {} as Dict<number>
+const identifierDict = {} as Dict<GraphQLType>
 
-const typeMapping: Dict<GraphQLEnumType> = {}
-const inputTypeMapping: Dict<GraphQLInputType> = {}
-const outputTypeMapping: Dict<GraphQLOutputType> = {}
+function getFullName(name: string, file: string, isInput = false) {
+  return file + '#' + name + (isInput ? '#input' : '')
+}
 
-const SPLIT = '__'
+function getAlias(name: string) {
+  if (typeof identifierCountDict[name] === 'undefined') {
+    identifierCountDict[name] = 0
+    return name
+  } else {
+    identifierCountDict[name]++
+    return name + identifierCountDict[name]
+  }
+}
 
-function loadThriftAstFromFile(file: string) {
-  if (fileMapping[file]) {
+function loadThriftFile(file: string) {
+  if (astMapping[file]) {
     console.log(file + ' already loaded, skipping...')
-    return fileMapping[file]
+    return astMapping[file]
   }
 
   const ast = parse(fs.readFileSync(file, 'utf8'))
   if (ast.type === SyntaxType.ThriftErrors) {
     console.error(ast.errors)
-    throw new Error('thrift file parse error: ' + file)
+    throw new Error('Thrift IDL parse error: ' + file)
   }
 
-  // get namespace
-  // const namespaceDef = ast.body.find(
-  //   statement =>
-  //     statement.type === SyntaxType.NamespaceDefinition &&
-  //     statement.scope.value === 'go',
-  // ) as NamespaceDefinition
-  // if (!namespaceDef) {
-  //   throw new Error('lack of namespace in file ' + file)
-  // }
-
-  // const namespace = namespaceDef.name.value
-  const namespace = path.basename(file, '.thrift')
-  fileMapping[file] = namespace
-  astMapping[namespace] = ast
-
-  ast.body.forEach(statement => {
-    switch (statement.type) {
-      case SyntaxType.EnumDefinition:
-      case SyntaxType.StructDefinition: {
-        const identifier = namespace + SPLIT + statement.name.value
-
-        if (identifierMapping[identifier]) {
-          // TODO: priority of duplicated identifiers
-          console.warn('duplicated identifier: ' + identifier + ' at ' + file)
-        }
-        identifierMapping[identifier] = statement
-        break
-      }
-    }
-  })
+  astMapping[file] = ast
 
   // load include files
   const includeDefs = ast.body.filter(
     statement => statement.type === SyntaxType.IncludeDefinition,
   ) as IncludeDefinition[]
   includeDefs.forEach(includeDef => {
-    loadThriftAstFromFile(
-      path.resolve(path.dirname(file), includeDef.path.value),
-    )
+    loadThriftFile(path.resolve(path.dirname(file), includeDef.path.value))
   })
-
-  return namespace
 }
 
 function commentsToDescription(comments: Comment[]) {
@@ -112,16 +90,12 @@ function commentsToDescription(comments: Comment[]) {
   }, '')
 }
 
-function convertEnumType(
-  node: EnumDefinition,
-  namespace: string,
-  isInput: boolean,
-) {
-  const name = namespace + SPLIT + node.name.value
+function convertEnumType(node: EnumDefinition, file: string, isInput: boolean) {
+  const fullName = getFullName(node.name.value, file, isInput)
 
-  if (!typeMapping[name]) {
-    typeMapping[name] = new GraphQLEnumType({
-      name: name,
+  if (!identifierDict[fullName]) {
+    identifierDict[fullName] = new GraphQLEnumType({
+      name: getAlias(node.name.value),
       description: commentsToDescription(node.comments),
       values: node.members.reduce(
         (dict, member, index) => {
@@ -143,7 +117,7 @@ function convertEnumType(
     })
   }
 
-  return typeMapping[name]
+  return identifierDict[fullName]
 }
 
 function convertListType(node: ListType, namespace: string, isInput: boolean) {
@@ -158,97 +132,81 @@ function convertSetType() {
   return GraphqlSet
 }
 
-function convertStruct(
-  struct: StructDefinition,
-  namespace: string,
-  isInput: boolean,
-) {
-  const name = namespace + SPLIT + struct.name.value + (isInput ? '_input' : '')
+function convertStruct(node: StructDefinition, file: string, isInput: boolean) {
+  const fullName = getFullName(node.name.value, file, isInput)
 
-  if (isInput) {
-    if (!inputTypeMapping[name]) {
-      inputTypeMapping[name] = new GraphQLInputObjectType({
-        name,
-        description: commentsToDescription(struct.comments),
-        fields: () =>
-          struct.fields.reduce(
+  const params = {
+    name: getAlias(node.name.value),
+    description: commentsToDescription(node.comments),
+    fields: () =>
+      node.fields.length
+        ? node.fields.reduce(
             (dict, field) => {
               dict[field.name.value] = {
-                type: convert(field, namespace, isInput) as GraphQLInputType,
+                type: convert(field, file, isInput) as any,
                 description: commentsToDescription(field.comments),
               }
               return dict
             },
-            {} as Dict<GraphQLInputFieldConfig>,
-          ),
-      })
-    }
-    return inputTypeMapping[name]
-  } else {
-    if (!outputTypeMapping[name]) {
-      outputTypeMapping[name] = new GraphQLObjectType({
-        name,
-        description: commentsToDescription(struct.comments),
-        fields: () =>
-          struct.fields.reduce(
-            (dict, field) => {
-              dict[field.name.value] = {
-                type: convert(field, namespace, isInput) as GraphQLOutputType,
-                description: commentsToDescription(field.comments),
-              }
-              return dict
-            },
-            {} as Dict<GraphQLFieldConfig<any, any>>,
-          ),
-      })
-    }
-    return outputTypeMapping[name]
+            // {} as Dict<GraphQLFieldConfig<any, any>>,
+            {} as Dict<any>,
+          )
+        : { _: { type: GraphQLBoolean } },
   }
+
+  if (!identifierDict[fullName]) {
+    identifierDict[fullName] = isInput
+      ? new GraphQLInputObjectType(params)
+      : new GraphQLObjectType(params)
+  }
+
+  return identifierDict[fullName]
 }
 
 function findIdentifier(
   identifier: Identifier,
-  namespace: string,
+  file: string,
   isInput: boolean,
 ) {
-  let namespaceOfIdentifier = namespace
+  let validFile = file
   let identifierName = identifier.value
 
-  // other namespace
+  // identifier could be in other file
   if (identifier.value.includes('.')) {
-    const arrs = identifier.value.split('.')
-    identifierName = arrs.pop() as string
-    namespaceOfIdentifier = arrs.join('.')
+    const strs = identifier.value.split('.')
+    if (strs.length > 2) {
+      throw new Error('Invalid identifier: ' + identifier.value)
+    }
+
+    const includeDefs = astMapping[file].body.filter(
+      item =>
+        item.type === SyntaxType.IncludeDefinition &&
+        item.path.value.endsWith(strs[0] + '.thrift'),
+    ) as IncludeDefinition[]
+
+    if (includeDefs.length !== 1) {
+      throw new Error('Invalid include definition count: ' + includeDefs.length)
+    }
+
+    validFile = path.resolve(path.dirname(file), includeDefs[0].path.value)
+    identifierName = strs[1]
   }
 
-  const ast = astMapping[namespaceOfIdentifier]
-  if (!ast) {
-    throw new Error('namespace not found: ' + namespaceOfIdentifier)
-  }
-
-  const node = ast.body.find(
+  const node = astMapping[validFile].body.find(
     item =>
       (item.type === SyntaxType.StructDefinition ||
         item.type === SyntaxType.EnumDefinition) &&
       item.name.value === identifierName,
   ) as StructDefinition | EnumDefinition
+
   if (!node) {
-    throw new Error(
-      "can't find identifier: " +
-        identifierName +
-        '\nnamespace: ' +
-        namespaceOfIdentifier,
-    )
+    throw new Error("can't find identifier: " + identifierName)
   }
-  return convert(node, namespaceOfIdentifier, isInput)
+  return convert(node, validFile, isInput)
 }
 
-function convertField(
-  field: FieldDefinition,
-  namespace: string,
-  isInput: boolean,
-) {
-  let type = convert(field.fieldType as Node, namespace, isInput)
+function convertField(field: FieldDefinition, file: string, isInput: boolean) {
+  let type = convert(field.fieldType as Node, file, isInput)
   if (field.requiredness === 'required') {
     type = GraphQLNonNull(type)
   }
@@ -265,30 +223,22 @@ type Node =
   | Identifier
   | BaseType
 
-function convert(node: Node, namespace: string, isInput: boolean): GraphQLType {
-  // console.log(namespace)
-
+function convert(node: Node, file: string, isInput: boolean): GraphQLType {
   switch (node.type) {
-    case SyntaxType.StructDefinition: {
-      const name = namespace + SPLIT + node.name.value
-      if (!isInput && outputTypeMapping[name]) {
-        // console.log(name, outputTypeMapping[name])
-        return outputTypeMapping[name]
-      }
-      return convertStruct(node, namespace, isInput)
-    }
+    case SyntaxType.StructDefinition:
+      return convertStruct(node, file, isInput)
     case SyntaxType.FieldDefinition:
-      return convertField(node, namespace, isInput)
+      return convertField(node, file, isInput)
     case SyntaxType.EnumDefinition:
-      return convertEnumType(node, namespace, isInput)
+      return convertEnumType(node, file, isInput)
     case SyntaxType.ListType:
-      return convertListType(node, namespace, isInput)
+      return convertListType(node, file, isInput)
     case SyntaxType.MapType:
       return convertMapType()
     case SyntaxType.SetType:
       return convertSetType()
     case SyntaxType.Identifier:
-      return findIdentifier(node, namespace, isInput)
+      return findIdentifier(node, file, isInput)
 
     // base type
     case SyntaxType.I8Keyword:
@@ -312,55 +262,72 @@ function convert(node: Node, namespace: string, isInput: boolean): GraphQLType {
 }
 
 export function thriftToSchema({
+  strict = true,
   services: serviceMapping,
-  resolveFunc,
-  getQueryName = (service, func) => service + func,
+  getQueryName = (service, func) => service + '_' + func,
 }: Options): GraphQLSchema {
   const services = Object.entries(serviceMapping).map(
-    ([serviceName, { file, funcs }]) => {
-      const namespace = loadThriftAstFromFile(file)
-      const ast = astMapping[namespace]
+    ([serviceName, { file, consul, funcs }]) => {
+      loadThriftFile(file)
+      const ast = astMapping[file]
 
-      const serviceAst = ast.body.find(
+      // find the first one
+      const serviceDef = ast.body.find(
         statement => statement.type === SyntaxType.ServiceDefinition,
       ) as ServiceDefinition
 
-      if (!serviceAst) {
+      if (!serviceDef) {
         throw new Error('no service at file: ' + file)
       }
 
-      return { serviceAst, serviceName, namespace, funcs }
+      return { serviceDef, serviceName, file, consul, funcs }
     },
   )
+
+  rpcClient = createClient({
+    idl: '/',
+    services: services.reduce(
+      (dict, { serviceName, file, consul }) => {
+        dict[serviceName] = {
+          filename: file,
+          consul,
+        }
+        return dict
+      },
+      {} as Dict<any>,
+    ),
+  })
 
   return new GraphQLSchema({
     query: new GraphQLObjectType({
       name: 'Query',
       description: 'The root query',
       fields: services.reduce(
-        (dict, { serviceAst, serviceName, namespace, funcs }) => {
-          serviceAst.functions.forEach(func => {
-            if (!funcs.includes(func.name.value)) return
+        (dict, { serviceDef, serviceName, file, funcs = {} }) => {
+          serviceDef.functions.forEach(funcDef => {
+            if (strict && !funcs[funcDef.name.value]) {
+              return dict
+            }
 
             const queryName = getQueryName(
-              serviceAst.name.value,
-              func.name.value,
+              serviceDef.name.value,
+              funcDef.name.value,
             )
 
             // TODO: fix types
             dict[queryName] = {
               type: convert(
-                func.returnType as Node,
-                namespace,
+                funcDef.returnType as Node,
+                file,
                 false,
               ) as GraphQLOutputType,
-              description: commentsToDescription(func.comments),
-              args: func.fields.reduce(
+              description: commentsToDescription(funcDef.comments),
+              args: funcDef.fields.reduce(
                 (dict, field) => {
                   dict[field.name.value] = {
                     type: convert(
                       field.fieldType as Node,
-                      namespace,
+                      file,
                       true,
                     ) as GraphQLInputType,
                     description: commentsToDescription(field.comments),
@@ -370,14 +337,18 @@ export function thriftToSchema({
                 {} as GraphQLFieldConfigArgumentMap,
               ),
               resolve: async (source, args, ctx, info) => {
-                return resolveFunc(
-                  source,
-                  args,
-                  ctx,
-                  info,
-                  serviceName,
-                  func.name.value,
-                )
+                const funcName = funcDef.name.value
+                const options = funcs[funcName]
+
+                if (options && options.onRequest) {
+                  args.req = await options.onRequest(args.req, ctx)
+                }
+
+                let response = rpcClient[serviceName][funcName](args.req)
+                if (options && options.onResponse) {
+                  response = await options.onResponse(response, ctx)
+                }
+                return response
               },
             }
           })
