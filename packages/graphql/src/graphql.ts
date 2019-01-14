@@ -1,5 +1,6 @@
 import fs from 'fs'
 import path from 'path'
+import assert from 'assert'
 import {
   GraphQLSchema,
   GraphQLObjectType,
@@ -151,7 +152,12 @@ function convertStruct(node: StructDefinition, file: string, isInput: boolean) {
             // {} as Dict<GraphQLFieldConfig<any, any>>,
             {} as Dict<any>,
           )
-        : { _: { type: GraphQLBoolean } },
+        : {
+            _: {
+              type: GraphQLBoolean,
+              description: 'This is just a placeholder',
+            },
+          },
   }
 
   if (!identifierDict[fullName]) {
@@ -174,9 +180,9 @@ function findIdentifier(
   // identifier could be in other file
   if (identifier.value.includes('.')) {
     const strs = identifier.value.split('.')
-    if (strs.length > 2) {
-      throw new Error('Invalid identifier: ' + identifier.value)
-    }
+
+    // expect `{namespace}.{identifier}` pattern
+    assert.equal(strs.length, 2, 'Invalid identifier: ' + identifier.value)
 
     const includeDefs = astMapping[file].body.filter(
       item =>
@@ -184,9 +190,12 @@ function findIdentifier(
         item.path.value.endsWith(strs[0] + '.thrift'),
     ) as IncludeDefinition[]
 
-    if (includeDefs.length !== 1) {
-      throw new Error('Invalid include definition count: ' + includeDefs.length)
-    }
+    // expect 1 include path match `{namespace}.thrift`
+    assert.equal(
+      includeDefs.length,
+      1,
+      'Invalid include definition count: ' + includeDefs.length,
+    )
 
     validFile = path.resolve(path.dirname(file), includeDefs[0].path.value)
     identifierName = strs[1]
@@ -199,9 +208,7 @@ function findIdentifier(
       item.name.value === identifierName,
   ) as StructDefinition | EnumDefinition
 
-  if (!node) {
-    throw new Error("can't find identifier: " + identifierName)
-  }
+  assert(node, "can't find identifier: " + identifierName)
   return convert(node, validFile, isInput)
 }
 
@@ -276,9 +283,7 @@ export function thriftToSchema({
         statement => statement.type === SyntaxType.ServiceDefinition,
       ) as ServiceDefinition
 
-      if (!serviceDef) {
-        throw new Error('no service at file: ' + file)
-      }
+      assert(serviceDef, 'no service at file: ' + file)
 
       return { serviceDef, serviceName, file, consul, funcs }
     },
