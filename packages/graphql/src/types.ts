@@ -4,6 +4,7 @@ export interface Options {
   strict?: boolean
   getQueryName?: (serviceName: string, funcName: string) => string
   idlPath: string
+  convertEnumToInt?: boolean
   services: {
     [serviceName: string]: {
       file: string

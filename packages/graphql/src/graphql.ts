@@ -37,7 +37,6 @@ import {
 } from '@creditkarma/thrift-parser'
 import { GraphqlInt64, GraphqlSet, GraphqlMap, Options } from './types'
 const { createClient } = require('@thrift/client')
-
 let rpcClient: any
 
 type Dict<T> = {
@@ -93,6 +92,10 @@ function commentsToDescription(comments: Comment[]) {
 
 function convertEnumType(node: EnumDefinition, options: ConvertOptions) {
   const fullName = getFullName(node.name.value, options)
+
+  if (options.convertEnumToInt) {
+    return GraphQLInt
+  }
 
   if (!identifierDict[fullName]) {
     identifierDict[fullName] = new GraphQLEnumType({
@@ -207,7 +210,7 @@ function findIdentifier(identifier: Identifier, options: ConvertOptions) {
   ) as StructDefinition | EnumDefinition
 
   assert(node, "can't find identifier: " + identifierName)
-  return convert(node, { file, isInput: options.isInput })
+  return convert(node, { ...options, file })
 }
 
 function convertField(field: FieldDefinition, options: ConvertOptions) {
@@ -231,6 +234,7 @@ type Node =
 interface ConvertOptions {
   file: string
   isInput: boolean
+  convertEnumToInt: boolean
 }
 
 function convert(node: Node, options: ConvertOptions): GraphQLType {
@@ -274,6 +278,7 @@ function convert(node: Node, options: ConvertOptions): GraphQLType {
 export function thriftToSchema({
   strict = true,
   idlPath,
+  convertEnumToInt = false,
   services: serviceMapping,
   getQueryName = (service, func) => service + '_' + func,
 }: Options): GraphQLSchema {
@@ -328,6 +333,7 @@ export function thriftToSchema({
             dict[queryName] = {
               type: convert(funcDef.returnType as Node, {
                 file,
+                convertEnumToInt,
                 isInput: false,
               }) as GraphQLOutputType,
               description: commentsToDescription(funcDef.comments),
@@ -336,6 +342,7 @@ export function thriftToSchema({
                   dict[field.name.value] = {
                     type: convert(field.fieldType as Node, {
                       file,
+                      convertEnumToInt,
                       isInput: true,
                     }) as GraphQLInputType,
                     description: commentsToDescription(field.comments),
