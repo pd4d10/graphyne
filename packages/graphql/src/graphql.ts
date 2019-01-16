@@ -184,10 +184,12 @@ function findIdentifier(
     // expect `{namespace}.{identifier}` pattern
     assert.equal(strs.length, 2, 'Invalid identifier: ' + identifier.value)
 
+    const fileName = strs[0] + '.thrift'
     const includeDefs = astMapping[file].body.filter(
       item =>
         item.type === SyntaxType.IncludeDefinition &&
-        item.path.value.endsWith(strs[0] + '.thrift'),
+        (item.path.value === fileName ||
+          item.path.value.endsWith('/' + fileName)),
     ) as IncludeDefinition[]
 
     // expect 1 include path match `{namespace}.thrift`
@@ -349,7 +351,7 @@ export function thriftToSchema({
                   args.req = await options.onRequest(args.req, ctx)
                 }
 
-                let response = rpcClient[serviceName][funcName](args.req)
+                let response = await rpcClient[serviceName][funcName](args.req)
                 if (options && options.onResponse) {
                   response = await options.onResponse(response, ctx)
                 }
