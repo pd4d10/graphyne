@@ -48,8 +48,8 @@ const astMapping: Dict<ThriftDocument> = {}
 const identifierCountDict = {} as Dict<number>
 const identifierDict = {} as Dict<GraphQLType>
 
-function getFullName(name: string, file: string, isInput = false) {
-  return file + '#' + name + (isInput ? '#input' : '')
+function getFullName(name: string, options: ConvertOptions) {
+  return options.file + '#' + name + (options.isInput ? '#input' : '')
 }
 
 function getAlias(name: string) {
@@ -91,8 +91,8 @@ function commentsToDescription(comments: Comment[]) {
   }, '')
 }
 
-function convertEnumType(node: EnumDefinition, file: string, isInput: boolean) {
-  const fullName = getFullName(node.name.value, file, isInput)
+function convertEnumType(node: EnumDefinition, options: ConvertOptions) {
+  const fullName = getFullName(node.name.value, options)
 
   if (!identifierDict[fullName]) {
     identifierDict[fullName] = new GraphQLEnumType({
@@ -121,8 +121,8 @@ function convertEnumType(node: EnumDefinition, file: string, isInput: boolean) {
   return identifierDict[fullName]
 }
 
-function convertListType(node: ListType, namespace: string, isInput: boolean) {
-  return new GraphQLList(convert(node.valueType, namespace, isInput))
+function convertListType(node: ListType, options: ConvertOptions) {
+  return new GraphQLList(convert(node.valueType, options))
 }
 
 function convertMapType() {
@@ -133,8 +133,8 @@ function convertSetType() {
   return GraphqlSet
 }
 
-function convertStruct(node: StructDefinition, file: string, isInput: boolean) {
-  const fullName = getFullName(node.name.value, file, isInput)
+function convertStruct(node: StructDefinition, options: ConvertOptions) {
+  const fullName = getFullName(node.name.value, options)
 
   const params = {
     name: getAlias(node.name.value),
@@ -144,7 +144,7 @@ function convertStruct(node: StructDefinition, file: string, isInput: boolean) {
         ? node.fields.reduce(
             (dict, field) => {
               dict[field.name.value] = {
-                type: convert(field, file, isInput) as any,
+                type: convert(field, options) as any,
                 description: commentsToDescription(field.comments),
               }
               return dict
@@ -161,7 +161,7 @@ function convertStruct(node: StructDefinition, file: string, isInput: boolean) {
   }
 
   if (!identifierDict[fullName]) {
-    identifierDict[fullName] = isInput
+    identifierDict[fullName] = options.isInput
       ? new GraphQLInputObjectType(params)
       : new GraphQLObjectType(params)
   }
@@ -169,12 +169,8 @@ function convertStruct(node: StructDefinition, file: string, isInput: boolean) {
   return identifierDict[fullName]
 }
 
-function findIdentifier(
-  identifier: Identifier,
-  file: string,
-  isInput: boolean,
-) {
-  let validFile = file
+function findIdentifier(identifier: Identifier, options: ConvertOptions) {
+  let file = options.file
   let identifierName = identifier.value
 
   // identifier could be in other file
@@ -185,7 +181,7 @@ function findIdentifier(
     assert.equal(strs.length, 2, 'Invalid identifier: ' + identifier.value)
 
     const fileName = strs[0] + '.thrift'
-    const includeDefs = astMapping[file].body.filter(
+    const includeDefs = astMapping[options.file].body.filter(
       item =>
         item.type === SyntaxType.IncludeDefinition &&
         (item.path.value === fileName ||
@@ -199,11 +195,11 @@ function findIdentifier(
       'Invalid include definition count: ' + includeDefs.length,
     )
 
-    validFile = path.resolve(path.dirname(file), includeDefs[0].path.value)
+    file = path.resolve(path.dirname(options.file), includeDefs[0].path.value)
     identifierName = strs[1]
   }
 
-  const node = astMapping[validFile].body.find(
+  const node = astMapping[file].body.find(
     item =>
       (item.type === SyntaxType.StructDefinition ||
         item.type === SyntaxType.EnumDefinition) &&
@@ -211,11 +207,11 @@ function findIdentifier(
   ) as StructDefinition | EnumDefinition
 
   assert(node, "can't find identifier: " + identifierName)
-  return convert(node, validFile, isInput)
+  return convert(node, { file, isInput: options.isInput })
 }
 
-function convertField(field: FieldDefinition, file: string, isInput: boolean) {
-  let type = convert(field.fieldType as Node, file, isInput)
+function convertField(field: FieldDefinition, options: ConvertOptions) {
+  let type = convert(field.fieldType as Node, options)
   if (field.requiredness === 'required') {
     type = GraphQLNonNull(type)
   }
@@ -232,22 +228,27 @@ type Node =
   | Identifier
   | BaseType
 
-function convert(node: Node, file: string, isInput: boolean): GraphQLType {
+interface ConvertOptions {
+  file: string
+  isInput: boolean
+}
+
+function convert(node: Node, options: ConvertOptions): GraphQLType {
   switch (node.type) {
     case SyntaxType.StructDefinition:
-      return convertStruct(node, file, isInput)
+      return convertStruct(node, options)
     case SyntaxType.FieldDefinition:
-      return convertField(node, file, isInput)
+      return convertField(node, options)
     case SyntaxType.EnumDefinition:
-      return convertEnumType(node, file, isInput)
+      return convertEnumType(node, options)
     case SyntaxType.ListType:
-      return convertListType(node, file, isInput)
+      return convertListType(node, options)
     case SyntaxType.MapType:
       return convertMapType()
     case SyntaxType.SetType:
       return convertSetType()
     case SyntaxType.Identifier:
-      return findIdentifier(node, file, isInput)
+      return findIdentifier(node, options)
 
     // base type
     case SyntaxType.I8Keyword:
@@ -272,11 +273,13 @@ function convert(node: Node, file: string, isInput: boolean): GraphQLType {
 
 export function thriftToSchema({
   strict = true,
+  idlPath,
   services: serviceMapping,
   getQueryName = (service, func) => service + '_' + func,
 }: Options): GraphQLSchema {
   const services = Object.entries(serviceMapping).map(
-    ([serviceName, { file, consul, funcs }]) => {
+    ([serviceName, { file: fileRelative, consul, methods }]) => {
+      const file = path.resolve(idlPath, fileRelative)
       loadThriftFile(file)
       const ast = astMapping[file]
 
@@ -287,12 +290,12 @@ export function thriftToSchema({
 
       assert(serviceDef, 'no service at file: ' + file)
 
-      return { serviceDef, serviceName, file, consul, funcs }
+      return { serviceDef, serviceName, file, consul, methods }
     },
   )
 
   rpcClient = createClient({
-    idl: '/',
+    idl: idlPath,
     services: services.reduce(
       (dict, { serviceName, file, consul }) => {
         dict[serviceName] = {
@@ -310,9 +313,9 @@ export function thriftToSchema({
       name: 'Query',
       description: 'The root query',
       fields: services.reduce(
-        (dict, { serviceDef, serviceName, file, funcs = {} }) => {
+        (dict, { serviceDef, serviceName, file, methods = {} }) => {
           serviceDef.functions.forEach(funcDef => {
-            if (strict && !funcs[funcDef.name.value]) {
+            if (strict && !methods[funcDef.name.value]) {
               return dict
             }
 
@@ -323,20 +326,18 @@ export function thriftToSchema({
 
             // TODO: fix types
             dict[queryName] = {
-              type: convert(
-                funcDef.returnType as Node,
+              type: convert(funcDef.returnType as Node, {
                 file,
-                false,
-              ) as GraphQLOutputType,
+                isInput: false,
+              }) as GraphQLOutputType,
               description: commentsToDescription(funcDef.comments),
               args: funcDef.fields.reduce(
                 (dict, field) => {
                   dict[field.name.value] = {
-                    type: convert(
-                      field.fieldType as Node,
+                    type: convert(field.fieldType as Node, {
                       file,
-                      true,
-                    ) as GraphQLInputType,
+                      isInput: true,
+                    }) as GraphQLInputType,
                     description: commentsToDescription(field.comments),
                   }
                   return dict
@@ -345,7 +346,7 @@ export function thriftToSchema({
               ),
               resolve: async (source, args, ctx, info) => {
                 const funcName = funcDef.name.value
-                const options = funcs[funcName]
+                const options = methods[funcName]
 
                 if (options && options.onRequest) {
                   args.req = await options.onRequest(args.req, ctx)

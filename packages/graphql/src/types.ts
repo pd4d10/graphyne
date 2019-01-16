@@ -3,11 +3,12 @@ import { GraphQLScalarType, Kind } from 'graphql'
 export interface Options {
   strict?: boolean
   getQueryName?: (serviceName: string, funcName: string) => string
+  idlPath: string
   services: {
     [serviceName: string]: {
       file: string
       consul: string
-      funcs?: {
+      methods?: {
         [funcName: string]: {
           onRequest?: (request: any, ctx: any) => Promise<any>
           onResponse?: (response: any, ctx: any) => Promise<any>
