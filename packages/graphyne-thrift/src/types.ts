@@ -1,35 +1,44 @@
 import { GraphQLScalarType, Kind } from 'graphql'
 
-export interface onRequestExtra {
+export interface OnRequestExtra {
   context: any
   service: string
   method: string
 }
 
-export interface onResponseExtra extends onRequestExtra {
+export interface OnResponseExtra extends OnRequestExtra {
   request: any
+}
+
+export interface TypeNameOptions {
+  file: string
+  name: string
+  isEnum: boolean
+  isInput: boolean
 }
 
 export interface Options {
   strict?: boolean
   getQueryName?: (serviceName: string, funcName: string) => string
+  getTypeName?: (options: TypeNameOptions) => string
   idlPath: string
   convertEnumToInt?: boolean
   services: {
     [serviceName: string]: {
       file: string
       consul: string
+      servers?: string[]
       methods?: {
         [funcName: string]: {
-          onRequest?: (request: any, ctx: any) => Promise<any>
-          onResponse?: (response: any, ctx: any) => Promise<any>
+          onRequest?: (request: any, extra: OnRequestExtra) => Promise<any>
+          onResponse?: (response: any, extra: OnResponseExtra) => Promise<any>
         }
       }
     }
   }
   globalHooks?: {
-    onRequest?: (request: any, extra: onRequestExtra) => Promise<any>
-    onResponse?: (response: any, extra: onResponseExtra) => Promise<any>
+    onRequest?: (request: any, extra: OnRequestExtra) => Promise<any>
+    onResponse?: (response: any, extra: OnResponseExtra) => Promise<any>
   }
 }
 
@@ -37,6 +46,9 @@ export const GraphqlInt64 = new GraphQLScalarType({
   name: 'Int64',
   description: 'Use string or number',
   serialize: value => {
+    if (value.toStringSigned) {
+      return value.toStringSigned()
+    }
     return value.toString()
   },
   parseValue: value => {

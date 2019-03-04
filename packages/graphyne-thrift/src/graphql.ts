@@ -1,74 +1,69 @@
+import assert from 'assert'
 import fs from 'fs'
 import path from 'path'
-import assert from 'assert'
 import {
-  GraphQLSchema,
-  GraphQLObjectType,
-  GraphQLString,
-  GraphQLInputObjectType,
-  GraphQLInt,
-  GraphQLFieldConfig,
   GraphQLBoolean,
-  GraphQLInputFieldConfig,
-  GraphQLNonNull,
   GraphQLEnumType,
   GraphQLEnumValueConfigMap,
-  GraphQLType,
-  GraphQLOutputType,
-  GraphQLInputType,
-  GraphQLList,
+  GraphQLFieldConfig,
   GraphQLFieldConfigArgumentMap,
+  GraphQLFloat,
+  GraphQLInputObjectType,
+  GraphQLInputType,
+  GraphQLInt,
+  GraphQLList,
+  GraphQLNonNull,
+  GraphQLObjectType,
+  GraphQLOutputType,
+  GraphQLSchema,
+  GraphQLString,
+  GraphQLType,
 } from 'graphql'
 import {
-  parse,
-  ThriftDocument,
-  SyntaxType,
-  StructDefinition,
-  Identifier,
-  ServiceDefinition,
-  Comment,
-  FieldDefinition,
-  IncludeDefinition,
-  EnumDefinition,
-  MapType,
-  ListType,
-  SetType,
   BaseType,
+  Comment,
+  EnumDefinition,
+  FieldDefinition,
+  Identifier,
+  IncludeDefinition,
+  ListType,
+  MapType,
+  parse,
+  ServiceDefinition,
+  SetType,
+  StructDefinition,
+  SyntaxType,
+  ThriftDocument,
 } from '@creditkarma/thrift-parser'
 import {
   GraphqlInt64,
-  GraphqlSet,
   GraphqlMap,
+  GraphqlSet,
+  OnRequestExtra,
+  OnResponseExtra,
   Options,
-  onRequestExtra,
-  onResponseExtra,
+  TypeNameOptions,
 } from './types'
+
 const { createClient } = require('thrift-client')
+
 let rpcClient: any
 
-type Dict<T> = {
+interface Dict<T> {
   [key: string]: T
 }
 
 const astMapping: Dict<ThriftDocument> = {}
 const identifierCountDict = {} as Dict<number>
-const identifierDict = {} as Dict<GraphQLType>
+const structDict = {} as Dict<GraphQLType>
+const enumDict = {} as Dict<GraphQLType>
 
-function getFullName(name: string, options: ConvertOptions) {
-  return options.file + '#' + name + (options.isInput ? '#input' : '')
-}
-
-function getAlias(name: string) {
-  if (typeof identifierCountDict[name] === 'undefined') {
-    identifierCountDict[name] = 0
-    return name
-  } else {
-    identifierCountDict[name]++
-    return name + identifierCountDict[name]
-  }
+function getTypeNameDefault(options: TypeNameOptions) {
+  return path.basename(options.file, '.thrift') + '_' + options.name
 }
 
 function loadThriftFile(file: string) {
+  // console.log('Parsing ' + file);
   if (astMapping[file]) {
     console.log(file + ' already loaded, skipping...')
     return astMapping[file]
@@ -98,15 +93,20 @@ function commentsToDescription(comments: Comment[]) {
 }
 
 function convertEnumType(node: EnumDefinition, options: ConvertOptions) {
-  const fullName = getFullName(node.name.value, options)
+  const enumName = options.file + '#' + node.name.value
 
   if (options.convertEnumToInt) {
     return GraphQLInt
   }
 
-  if (!identifierDict[fullName]) {
-    identifierDict[fullName] = new GraphQLEnumType({
-      name: getAlias(node.name.value),
+  if (!enumDict[enumName]) {
+    enumDict[enumName] = new GraphQLEnumType({
+      name: options.getTypeName({
+        name: node.name.value,
+        file: options.file,
+        isInput: options.isInput,
+        isEnum: true,
+      }),
       description: commentsToDescription(node.comments),
       values: node.members.reduce(
         (dict, member, index) => {
@@ -128,7 +128,7 @@ function convertEnumType(node: EnumDefinition, options: ConvertOptions) {
     })
   }
 
-  return identifierDict[fullName]
+  return enumDict[enumName]
 }
 
 function convertListType(node: ListType, options: ConvertOptions) {
@@ -144,10 +144,16 @@ function convertSetType() {
 }
 
 function convertStruct(node: StructDefinition, options: ConvertOptions) {
-  const fullName = getFullName(node.name.value, options)
+  const fullName =
+    options.file + '#' + node.name.value + (options.isInput ? '#input' : '')
 
   const params = {
-    name: getAlias(node.name.value),
+    name: options.getTypeName({
+      file: options.file,
+      name: node.name.value,
+      isInput: options.isInput,
+      isEnum: false,
+    }),
     description: commentsToDescription(node.comments),
     fields: () =>
       node.fields.length
@@ -170,13 +176,13 @@ function convertStruct(node: StructDefinition, options: ConvertOptions) {
           },
   }
 
-  if (!identifierDict[fullName]) {
-    identifierDict[fullName] = options.isInput
+  if (!structDict[fullName]) {
+    structDict[fullName] = options.isInput
       ? new GraphQLInputObjectType(params)
       : new GraphQLObjectType(params)
   }
 
-  return identifierDict[fullName]
+  return structDict[fullName]
 }
 
 function findIdentifier(identifier: Identifier, options: ConvertOptions) {
@@ -242,6 +248,12 @@ interface ConvertOptions {
   file: string
   isInput: boolean
   convertEnumToInt: boolean
+  getTypeName: (options: {
+    file: string
+    name: string
+    isEnum: boolean
+    isInput: boolean
+  }) => string
 }
 
 function convert(node: Node, options: ConvertOptions): GraphQLType {
@@ -268,7 +280,7 @@ function convert(node: Node, options: ConvertOptions): GraphQLType {
     case SyntaxType.BinaryKeyword:
     case SyntaxType.ByteKeyword:
     case SyntaxType.DoubleKeyword:
-      return GraphQLInt
+      return GraphQLFloat
     case SyntaxType.I64Keyword:
       return GraphqlInt64
     case SyntaxType.StringKeyword:
@@ -289,9 +301,10 @@ export function thriftToSchema({
   globalHooks = {},
   services: serviceMapping,
   getQueryName = (service, func) => service + '_' + func,
+  getTypeName = getTypeNameDefault,
 }: Options): GraphQLSchema {
   const services = Object.entries(serviceMapping).map(
-    ([serviceName, { file: fileRelative, consul, methods }]) => {
+    ([serviceName, { file: fileRelative, consul, servers, methods }]) => {
       const file = path.resolve(idlPath, fileRelative)
       loadThriftFile(file)
       const ast = astMapping[file]
@@ -303,17 +316,18 @@ export function thriftToSchema({
 
       assert(serviceDef, 'no service at file: ' + file)
 
-      return { serviceDef, serviceName, file, consul, methods }
+      return { serviceDef, serviceName, file, consul, servers, methods }
     },
   )
 
   rpcClient = createClient({
     idl: idlPath,
     services: services.reduce(
-      (dict, { serviceName, file, consul }) => {
+      (dict, { serviceName, file, consul, servers }) => {
         dict[serviceName] = {
           filename: file,
           consul,
+          servers,
         }
         return dict
       },
@@ -321,7 +335,7 @@ export function thriftToSchema({
     ),
   })
 
-  return new GraphQLSchema({
+  const schema = new GraphQLSchema({
     query: new GraphQLObjectType({
       name: 'Query',
       description: 'The root query',
@@ -343,19 +357,21 @@ export function thriftToSchema({
                 file,
                 convertEnumToInt,
                 isInput: false,
+                getTypeName: getTypeName,
               }) as GraphQLOutputType,
               description: commentsToDescription(funcDef.comments),
               args: funcDef.fields.reduce(
-                (dict, field) => {
-                  dict[field.name.value] = {
+                (subDict, field) => {
+                  subDict[field.name.value] = {
                     type: convert(field.fieldType as Node, {
                       file,
                       convertEnumToInt,
                       isInput: true,
+                      getTypeName: getTypeName,
                     }) as GraphQLInputType,
                     description: commentsToDescription(field.comments),
                   }
-                  return dict
+                  return subDict
                 },
                 {} as GraphQLFieldConfigArgumentMap,
               ),
@@ -365,7 +381,7 @@ export function thriftToSchema({
                 // TODO: multiple arguments
                 let request = args.req
 
-                const reqExtra: onRequestExtra = {
+                const reqExtra: OnRequestExtra = {
                   context: ctx,
                   service: serviceName,
                   method: funcName,
@@ -379,7 +395,7 @@ export function thriftToSchema({
 
                 let response = await rpcClient[serviceName][funcName](request)
 
-                const resExtra: onResponseExtra = { ...reqExtra, request }
+                const resExtra: OnResponseExtra = { ...reqExtra, request }
                 if (globalHooks.onResponse) {
                   response = await globalHooks.onResponse(response, resExtra)
                 }
@@ -398,4 +414,6 @@ export function thriftToSchema({
       ),
     }),
   })
+
+  return schema
 }
