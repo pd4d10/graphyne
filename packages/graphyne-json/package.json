@@ -1,8 +1,15 @@
 {
-  "name": "@thrift/graphql",
+  "name": "@graphyne/json",
   "version": "0.0.4",
   "description": "",
+  "author": "Rongjian Zhang <pd4d10@gmail.com>",
+  "license": "MIT",
   "main": "lib/index.js",
+  "repository": "pd4d10/graphyne",
+  "keywords": [
+    "graphql",
+    "json"
+  ],
   "files": [
     "lib"
   ],
@@ -10,16 +17,7 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "rm -rf lib && tsc"
   },
-  "repository": "pd4d10/thrift",
-  "keywords": [
-    "thrift",
-    "graphql"
-  ],
-  "author": "Rongjian Zhang <pd4d10@gmail.com>",
-  "license": "MIT",
-  "homepage": "https://github.com/pd4d10/thrift#readme",
   "dependencies": {
-    "@creditkarma/thrift-parser": "^1.1.4",
     "@types/node": "^10.12.18"
   },
   "peerDependencies": {
@@ -27,6 +25,6 @@
   },
   "devDependencies": {
     "@types/graphql": "^14.0.4",
-    "graphql": "^14.0.2"
+    "graphql": "^14.0.0"
   }
 }

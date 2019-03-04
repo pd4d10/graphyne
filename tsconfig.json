@@ -1,4 +1,8 @@
 {
   "files": [],
-  "references": [{ "path": "packages/graphql" }, { "path": "packages/client" }]
+  "references": [
+    { "path": "packages/graphyne-json" },
+    { "path": "packages/graphyne-thrift" },
+    { "path": "packages/graphyne-protobuf" }
+  ]
 }

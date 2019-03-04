@@ -1,5 +1,15 @@
 import { GraphQLScalarType, Kind } from 'graphql'
 
+export interface onRequestExtra {
+  context: any
+  service: string
+  method: string
+}
+
+export interface onResponseExtra extends onRequestExtra {
+  request: any
+}
+
 export interface Options {
   strict?: boolean
   getQueryName?: (serviceName: string, funcName: string) => string
@@ -16,6 +26,10 @@ export interface Options {
         }
       }
     }
+  }
+  globalHooks?: {
+    onRequest?: (request: any, extra: onRequestExtra) => Promise<any>
+    onResponse?: (response: any, extra: onResponseExtra) => Promise<any>
   }
 }
 

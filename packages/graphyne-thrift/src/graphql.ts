@@ -35,8 +35,15 @@ import {
   SetType,
   BaseType,
 } from '@creditkarma/thrift-parser'
-import { GraphqlInt64, GraphqlSet, GraphqlMap, Options } from './types'
-const { createClient } = require('@thrift/client')
+import {
+  GraphqlInt64,
+  GraphqlSet,
+  GraphqlMap,
+  Options,
+  onRequestExtra,
+  onResponseExtra,
+} from './types'
+const { createClient } = require('thrift-client')
 let rpcClient: any
 
 type Dict<T> = {
@@ -279,6 +286,7 @@ export function thriftToSchema({
   strict = true,
   idlPath,
   convertEnumToInt = false,
+  globalHooks = {},
   services: serviceMapping,
   getQueryName = (service, func) => service + '_' + func,
 }: Options): GraphQLSchema {
@@ -353,16 +361,32 @@ export function thriftToSchema({
               ),
               resolve: async (source, args, ctx, info) => {
                 const funcName = funcDef.name.value
-                const options = methods[funcName]
+                const options = methods[funcName] || {}
+                // TODO: multiple arguments
+                let request = args.req
 
-                if (options && options.onRequest) {
-                  args.req = await options.onRequest(args.req, ctx)
+                const reqExtra: onRequestExtra = {
+                  context: ctx,
+                  service: serviceName,
+                  method: funcName,
+                }
+                if (globalHooks.onRequest) {
+                  request = await globalHooks.onRequest(request, reqExtra)
+                }
+                if (options.onRequest) {
+                  request = await options.onRequest(request, reqExtra)
                 }
 
-                let response = await rpcClient[serviceName][funcName](args.req)
-                if (options && options.onResponse) {
-                  response = await options.onResponse(response, ctx)
+                let response = await rpcClient[serviceName][funcName](request)
+
+                const resExtra: onResponseExtra = { ...reqExtra, request }
+                if (globalHooks.onResponse) {
+                  response = await globalHooks.onResponse(response, resExtra)
                 }
+                if (options.onResponse) {
+                  response = await options.onResponse(response, resExtra)
+                }
+
                 return response
               },
             }

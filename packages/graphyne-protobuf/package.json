@@ -1,0 +1,30 @@
+{
+  "name": "@graphyne/protobuf",
+  "version": "0.0.4",
+  "description": "",
+  "author": "Rongjian Zhang <pd4d10@gmail.com>",
+  "license": "MIT",
+  "main": "lib/index.js",
+  "repository": "pd4d10/graphyne",
+  "keywords": [
+    "graphql",
+    "protobuf"
+  ],
+  "files": [
+    "lib"
+  ],
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "rm -rf lib && tsc"
+  },
+  "dependencies": {
+    "@types/node": "^10.12.18"
+  },
+  "peerDependencies": {
+    "graphql": "^14.0.0"
+  },
+  "devDependencies": {
+    "@types/graphql": "^14.0.4",
+    "graphql": "^14.0.0"
+  }
+}
