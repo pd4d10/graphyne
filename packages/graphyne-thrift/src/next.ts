@@ -55,6 +55,11 @@ interface Dict<T> {
   [key: string]: T
 }
 
+interface ConvertOptions {
+  file: string
+  isInput: boolean
+}
+
 export interface GraphqlTypeGeneratorOptions {
   basePath: string
   /**
@@ -65,11 +70,9 @@ export interface GraphqlTypeGeneratorOptions {
 
 export class GraphqlTypeGenerator {
   private astMapping: Dict<ThriftDocument> = {}
-  private currentFile: string = ''
   private enumDict: Dict<GraphQLEnumType> = {}
   private inputObjectDict: Dict<GraphQLInputObjectType> = {}
   private objectDict: Dict<GraphQLObjectType> = {}
-  private isInput = false
 
   private basePath: string
   private convertEnumToInt = false
@@ -82,9 +85,6 @@ export class GraphqlTypeGenerator {
   }
 
   private loadThriftFile(file: string) {
-    this.currentFile = file
-
-    // console.log('Parsing ' + file);
     if (this.astMapping[file]) {
       console.log(file + ' already loaded, skipping...')
       return
@@ -93,6 +93,7 @@ export class GraphqlTypeGenerator {
     const ast = parse(
       fs.readFileSync(path.resolve(this.basePath, file), 'utf8'),
     )
+
     if (ast.type === SyntaxType.ThriftErrors) {
       console.error(ast.errors)
       throw new Error('Thrift IDL parse error: ' + file)
@@ -106,9 +107,7 @@ export class GraphqlTypeGenerator {
     ) as IncludeDefinition[]
 
     includeDefs.forEach(includeDef => {
-      this.loadThriftFile(
-        path.resolve(path.dirname(file), includeDef.path.value),
-      )
+      this.loadThriftFile(path.join(path.dirname(file), includeDef.path.value))
     })
   }
 
@@ -130,8 +129,8 @@ export class GraphqlTypeGenerator {
     }
   }
 
-  private convertEnumType(node: EnumDefinition) {
-    const enumKey = this.currentFile + '#' + node.name.value
+  private convertEnumType(node: EnumDefinition, options: ConvertOptions) {
+    const enumKey = options.file + '#' + node.name.value
 
     if (this.convertEnumToInt) {
       return GraphQLInt
@@ -158,19 +157,19 @@ export class GraphqlTypeGenerator {
     return this.enumDict[enumKey]
   }
 
-  private convertListType(node: ListType) {
-    return new GraphQLList(this.convert(node.valueType))
+  private convertListType(node: ListType, options: ConvertOptions) {
+    return new GraphQLList(this.convert(node.valueType, options))
   }
 
-  private convertStruct(node: StructDefinition) {
-    const structKey = this.currentFile + '#' + node.name.value
+  private convertStruct(node: StructDefinition, options: ConvertOptions) {
+    const structKey = options.file + '#' + node.name.value
 
-    if (this.isInput) {
+    if (options.isInput) {
       const structFields: Dict<GraphQLInputFieldConfig> = {}
       if (node.fields.length) {
         node.fields.forEach(field => {
           structFields[field.name.value] = {
-            type: this.convert(field) as GraphQLInputType,
+            type: this.convert(field, options) as GraphQLInputType,
             description: commentsToDescription(field.comments),
             defaultValue: field.defaultValue
               ? this.convertConstValue(field.defaultValue)
@@ -187,7 +186,7 @@ export class GraphqlTypeGenerator {
 
       if (!this.inputObjectDict[structKey]) {
         this.inputObjectDict[structKey] = new GraphQLInputObjectType({
-          name: node.name.value,
+          name: node.name.value + 'Input',
           description: commentsToDescription(node.comments),
           fields: () => structFields,
         })
@@ -198,7 +197,7 @@ export class GraphqlTypeGenerator {
       if (node.fields.length) {
         node.fields.forEach(field => {
           structFields[field.name.value] = {
-            type: this.convert(field) as GraphQLOutputType,
+            type: this.convert(field, options) as GraphQLOutputType,
             description: commentsToDescription(field.comments),
           }
         })
@@ -212,6 +211,8 @@ export class GraphqlTypeGenerator {
 
       if (!this.objectDict[structKey]) {
         this.objectDict[structKey] = new GraphQLObjectType({
+          // TODO: name conflict
+          // options.file.replace(/[\/\.]/g, '_') +
           name: node.name.value,
           description: commentsToDescription(node.comments),
           fields: () => structFields,
@@ -221,8 +222,8 @@ export class GraphqlTypeGenerator {
     }
   }
 
-  private findIdentifier(identifier: Identifier) {
-    let file = this.currentFile
+  private findIdentifier(identifier: Identifier, options: ConvertOptions) {
+    let file = options.file
     let identifierName = identifier.value
 
     // identifier could be in other file
@@ -233,7 +234,7 @@ export class GraphqlTypeGenerator {
       assert.equal(strs.length, 2, 'Invalid identifier: ' + identifier.value)
 
       const fileName = strs[0] + '.thrift'
-      const includeDefs = this.astMapping[file].body.filter(
+      const includeDefs = this.astMapping[options.file].body.filter(
         item =>
           item.type === SyntaxType.IncludeDefinition &&
           (item.path.value === fileName ||
@@ -247,10 +248,7 @@ export class GraphqlTypeGenerator {
         'Invalid include definition count: ' + includeDefs.length,
       )
 
-      this.currentFile = path.resolve(
-        path.dirname(file),
-        includeDefs[0].path.value,
-      )
+      file = path.join(path.dirname(options.file), includeDefs[0].path.value)
       identifierName = strs[1]
     }
 
@@ -261,34 +259,34 @@ export class GraphqlTypeGenerator {
         item.name.value === identifierName,
     ) as StructDefinition | EnumDefinition
 
-    assert(node, `identifier not found: ${identifierName}`)
-    return this.convert(node)
+    assert(node, `identifier not found: ${identifierName} ${options.file}`)
+    return this.convert(node, { ...options, file })
   }
 
-  private convertField(field: FieldDefinition) {
-    let type = this.convert(field.fieldType as MyNode)
+  private convertField(field: FieldDefinition, options: ConvertOptions) {
+    let type = this.convert(field.fieldType as MyNode, options)
     if (field.requiredness === 'required') {
       type = GraphQLNonNull(type)
     }
     return type
   }
 
-  private convert(node: MyNode): GraphQLType {
+  private convert(node: MyNode, options: ConvertOptions): GraphQLType {
     switch (node.type) {
       case SyntaxType.StructDefinition:
-        return this.convertStruct(node)
+        return this.convertStruct(node, options)
       case SyntaxType.FieldDefinition:
-        return this.convertField(node)
+        return this.convertField(node, options)
       case SyntaxType.EnumDefinition:
-        return this.convertEnumType(node)
+        return this.convertEnumType(node, options)
       case SyntaxType.ListType:
-        return this.convertListType(node)
+        return this.convertListType(node, options)
       case SyntaxType.MapType:
         return GraphqlMap
       case SyntaxType.SetType:
         return GraphqlSet
       case SyntaxType.Identifier:
-        return this.findIdentifier(node)
+        return this.findIdentifier(node, options)
 
       // base types
       case SyntaxType.I8Keyword:
@@ -307,7 +305,6 @@ export class GraphqlTypeGenerator {
         return GraphQLBoolean
 
       default:
-        console.log(node)
         throw new Error('node type error')
     }
   }
@@ -334,17 +331,21 @@ export class GraphqlTypeGenerator {
 
     const queryArgs: GraphQLFieldConfigArgumentMap = {}
 
-    this.isInput = true
     funcDef.fields.forEach(field => {
       queryArgs[field.name.value] = {
-        type: this.convert(field.fieldType) as GraphQLInputType,
+        type: this.convert(field.fieldType, {
+          file,
+          isInput: true,
+        }) as GraphQLInputType,
         description: commentsToDescription(field.comments),
       }
     })
 
-    this.isInput = false
     return {
-      type: this.convert(funcDef.returnType) as GraphQLOutputType,
+      type: this.convert(funcDef.returnType, {
+        file,
+        isInput: false,
+      }) as GraphQLOutputType,
       description: commentsToDescription(funcDef.comments),
       args: queryArgs,
     }
