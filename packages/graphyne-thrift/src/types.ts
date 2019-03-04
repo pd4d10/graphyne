@@ -73,14 +73,11 @@ function serializeScalar(value: any): any {
   }
 
   if (value instanceof Map) {
-    return [...value].reduce(
-      (result, [k, v]) => {
-        // for key, call toString by default
-        result[k] = serializeScalar(v)
-        return result
-      },
-      {} as { [key: string]: any },
-    )
+    const result: { [key: string]: any } = {}
+    value.forEach((k, v) => {
+      result[k] = serializeScalar(v)
+    })
+    return result
   }
 
   return value

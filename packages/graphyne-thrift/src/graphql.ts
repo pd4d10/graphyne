@@ -100,6 +100,19 @@ function convertEnumType(node: EnumDefinition, options: ConvertOptions) {
   }
 
   if (!enumDict[enumName]) {
+    const enumValues: GraphQLEnumValueConfigMap = {}
+    node.members.forEach((member, index) => {
+      enumValues[member.name.value] = {
+        value: member.initializer
+          ? parseInt(
+              member.initializer.value.value,
+              member.initializer.value.type === SyntaxType.HexLiteral ? 16 : 10,
+            )
+          : index,
+        description: commentsToDescription(member.comments),
+      }
+    })
+
     enumDict[enumName] = new GraphQLEnumType({
       name: options.getTypeName({
         name: node.name.value,
@@ -108,23 +121,7 @@ function convertEnumType(node: EnumDefinition, options: ConvertOptions) {
         isEnum: true,
       }),
       description: commentsToDescription(node.comments),
-      values: node.members.reduce(
-        (dict, member, index) => {
-          dict[member.name.value] = {
-            value: member.initializer
-              ? parseInt(
-                  member.initializer.value.value,
-                  member.initializer.value.type === SyntaxType.HexLiteral
-                    ? 16
-                    : 10,
-                )
-              : index,
-            description: commentsToDescription(member.comments),
-          }
-          return dict
-        },
-        {} as GraphQLEnumValueConfigMap,
-      ),
+      values: enumValues,
     })
   }
 
@@ -147,6 +144,23 @@ function convertStruct(node: StructDefinition, options: ConvertOptions) {
   const fullName =
     options.file + '#' + node.name.value + (options.isInput ? '#input' : '')
 
+  const structFields: Dict<any> = {}
+  // {} as Dict<GraphQLFieldConfig<any, any>>,
+  if (node.fields.length) {
+    node.fields.forEach(field => {
+      structFields[field.name.value] = {
+        type: convert(field, options) as any,
+        description: commentsToDescription(field.comments),
+      }
+    })
+  } else {
+    // TODO: remove this struct?
+    structFields._ = {
+      type: GraphQLBoolean,
+      description: 'This is just a placeholder',
+    }
+  }
+
   const params = {
     name: options.getTypeName({
       file: options.file,
@@ -155,25 +169,7 @@ function convertStruct(node: StructDefinition, options: ConvertOptions) {
       isEnum: false,
     }),
     description: commentsToDescription(node.comments),
-    fields: () =>
-      node.fields.length
-        ? node.fields.reduce(
-            (dict, field) => {
-              dict[field.name.value] = {
-                type: convert(field, options) as any,
-                description: commentsToDescription(field.comments),
-              }
-              return dict
-            },
-            // {} as Dict<GraphQLFieldConfig<any, any>>,
-            {} as Dict<any>,
-          )
-        : {
-            _: {
-              type: GraphQLBoolean,
-              description: 'This is just a placeholder',
-            },
-          },
+    fields: () => structFields,
   }
 
   if (!structDict[fullName]) {
@@ -335,83 +331,76 @@ export function thriftToSchema({
     ),
   })
 
+  const queryFields: Dict<GraphQLFieldConfig<any, any>> = {}
+
+  services.forEach(({ serviceDef, serviceName, file, methods = {} }) => {
+    serviceDef.functions.forEach(funcDef => {
+      if (strict && !methods[funcDef.name.value]) return
+
+      const queryName = getQueryName(serviceDef.name.value, funcDef.name.value)
+
+      const queryArgs: GraphQLFieldConfigArgumentMap = {}
+      funcDef.fields.forEach(field => {
+        queryArgs[field.name.value] = {
+          type: convert(field.fieldType as Node, {
+            file,
+            convertEnumToInt,
+            isInput: true,
+            getTypeName: getTypeName,
+          }) as GraphQLInputType,
+          description: commentsToDescription(field.comments),
+        }
+      })
+
+      // TODO: fix types
+      queryFields[queryName] = {
+        type: convert(funcDef.returnType as Node, {
+          file,
+          convertEnumToInt,
+          isInput: false,
+          getTypeName: getTypeName,
+        }) as GraphQLOutputType,
+        description: commentsToDescription(funcDef.comments),
+        args: queryArgs,
+        resolve: async (source, args, ctx, info) => {
+          const funcName = funcDef.name.value
+          const options = methods[funcName] || {}
+          // TODO: multiple arguments
+          let request = args.req
+
+          const reqExtra: OnRequestExtra = {
+            context: ctx,
+            service: serviceName,
+            method: funcName,
+          }
+          if (globalHooks.onRequest) {
+            request = await globalHooks.onRequest(request, reqExtra)
+          }
+          if (options.onRequest) {
+            request = await options.onRequest(request, reqExtra)
+          }
+
+          let response = await rpcClient[serviceName][funcName](request)
+
+          const resExtra: OnResponseExtra = { ...reqExtra, request }
+          if (globalHooks.onResponse) {
+            response = await globalHooks.onResponse(response, resExtra)
+          }
+          if (options.onResponse) {
+            response = await options.onResponse(response, resExtra)
+          }
+
+          return response
+        },
+      }
+    })
+  })
+
   const schema = new GraphQLSchema({
     query: new GraphQLObjectType({
       name: 'Query',
       description: 'The root query',
-      fields: services.reduce(
-        (dict, { serviceDef, serviceName, file, methods = {} }) => {
-          serviceDef.functions.forEach(funcDef => {
-            if (strict && !methods[funcDef.name.value]) {
-              return dict
-            }
-
-            const queryName = getQueryName(
-              serviceDef.name.value,
-              funcDef.name.value,
-            )
-
-            // TODO: fix types
-            dict[queryName] = {
-              type: convert(funcDef.returnType as Node, {
-                file,
-                convertEnumToInt,
-                isInput: false,
-                getTypeName: getTypeName,
-              }) as GraphQLOutputType,
-              description: commentsToDescription(funcDef.comments),
-              args: funcDef.fields.reduce(
-                (subDict, field) => {
-                  subDict[field.name.value] = {
-                    type: convert(field.fieldType as Node, {
-                      file,
-                      convertEnumToInt,
-                      isInput: true,
-                      getTypeName: getTypeName,
-                    }) as GraphQLInputType,
-                    description: commentsToDescription(field.comments),
-                  }
-                  return subDict
-                },
-                {} as GraphQLFieldConfigArgumentMap,
-              ),
-              resolve: async (source, args, ctx, info) => {
-                const funcName = funcDef.name.value
-                const options = methods[funcName] || {}
-                // TODO: multiple arguments
-                let request = args.req
-
-                const reqExtra: OnRequestExtra = {
-                  context: ctx,
-                  service: serviceName,
-                  method: funcName,
-                }
-                if (globalHooks.onRequest) {
-                  request = await globalHooks.onRequest(request, reqExtra)
-                }
-                if (options.onRequest) {
-                  request = await options.onRequest(request, reqExtra)
-                }
-
-                let response = await rpcClient[serviceName][funcName](request)
-
-                const resExtra: OnResponseExtra = { ...reqExtra, request }
-                if (globalHooks.onResponse) {
-                  response = await globalHooks.onResponse(response, resExtra)
-                }
-                if (options.onResponse) {
-                  response = await options.onResponse(response, resExtra)
-                }
-
-                return response
-              },
-            }
-          })
-
-          return dict
-        },
-        {} as Dict<GraphQLFieldConfig<any, any>>,
-      ),
+      fields: queryFields,
     }),
   })
 
