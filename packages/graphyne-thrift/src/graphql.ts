@@ -44,6 +44,7 @@ import {
   Options,
   TypeNameOptions,
 } from './types'
+import { commentsToDescription, convertMapType, convertSetType } from './utils'
 
 const { createClient } = require('thrift-client')
 
@@ -86,12 +87,6 @@ function loadThriftFile(file: string) {
   })
 }
 
-function commentsToDescription(comments: Comment[]) {
-  return comments.reduce((comment, { value }) => {
-    return comment + value
-  }, '')
-}
-
 function convertEnumType(node: EnumDefinition, options: ConvertOptions) {
   const enumName = options.file + '#' + node.name.value
 
@@ -130,14 +125,6 @@ function convertEnumType(node: EnumDefinition, options: ConvertOptions) {
 
 function convertListType(node: ListType, options: ConvertOptions) {
   return new GraphQLList(convert(node.valueType, options))
-}
-
-function convertMapType() {
-  return GraphqlMap
-}
-
-function convertSetType() {
-  return GraphqlSet
 }
 
 function convertStruct(node: StructDefinition, options: ConvertOptions) {
