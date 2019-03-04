@@ -62,14 +62,15 @@ export interface GraphqlTypeGeneratorOptions {
 }
 
 export class GraphqlTypeGenerator {
-  private basePath: string
   private astMapping: Dict<ThriftDocument> = {}
   private currentFile: string = ''
-  private convertEnumToInt = false
   private enumDict: Dict<GraphQLEnumType> = {}
   private inputObjectDict: Dict<GraphQLInputObjectType> = {}
   private objectDict: Dict<GraphQLObjectType> = {}
   private isInput = false
+
+  private basePath: string
+  private convertEnumToInt = false
 
   constructor({ basePath, convertEnumToInt }: GraphqlTypeGeneratorOptions) {
     this.basePath = basePath
