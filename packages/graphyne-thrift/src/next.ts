@@ -17,9 +17,9 @@ import {
   Identifier,
   BaseType,
   FunctionType,
+  ConstValue,
 } from '@creditkarma/thrift-parser'
 import {
-  GraphQLFieldConfig,
   GraphQLOutputType,
   GraphQLFieldConfigArgumentMap,
   GraphQLType,
@@ -34,6 +34,8 @@ import {
   GraphQLInputType,
   GraphQLInputObjectType,
   GraphQLObjectType,
+  GraphQLInputFieldConfig,
+  GraphQLFieldConfig,
 } from 'graphql'
 import { commentsToDescription } from './utils'
 import { GraphqlInt64, GraphqlMap, GraphqlSet } from './types'
@@ -110,6 +112,24 @@ export class GraphqlTypeGenerator {
     })
   }
 
+  private convertConstValue(constValue: ConstValue) {
+    switch (constValue.type) {
+      case SyntaxType.StringLiteral:
+      case SyntaxType.BooleanLiteral:
+        return constValue.value
+      case SyntaxType.IntConstant:
+        return parseInt(
+          constValue.value.value,
+          constValue.value.type === SyntaxType.HexLiteral ? 16 : 10,
+        )
+      case SyntaxType.DoubleConstant:
+        return parseFloat(constValue.value.value)
+      default:
+        // TODO:
+        return
+    }
+  }
+
   private convertEnumType(node: EnumDefinition) {
     const enumKey = this.currentFile + '#' + node.name.value
 
@@ -119,16 +139,11 @@ export class GraphqlTypeGenerator {
 
     if (!this.enumDict[enumKey]) {
       const enumValues: GraphQLEnumValueConfigMap = {}
-      node.members.forEach((member, index) => {
+      node.members.forEach(member => {
         enumValues[member.name.value] = {
           value: member.initializer
-            ? parseInt(
-                member.initializer.value.value,
-                member.initializer.value.type === SyntaxType.HexLiteral
-                  ? 16
-                  : 10,
-              )
-            : index,
+            ? this.convertConstValue(member.initializer)
+            : undefined,
           description: commentsToDescription(member.comments),
         }
       })
@@ -150,37 +165,57 @@ export class GraphqlTypeGenerator {
   private convertStruct(node: StructDefinition) {
     const structKey = this.currentFile + '#' + node.name.value
 
-    const structFields: Dict<any> = {}
-    // {} as Dict<GraphQLFieldConfig<any, any>>,
-    if (node.fields.length) {
-      node.fields.forEach(field => {
-        structFields[field.name.value] = {
-          type: this.convert(field),
-          description: commentsToDescription(field.comments),
-        }
-      })
-    } else {
-      // TODO: remove this struct?
-      structFields._ = {
-        type: GraphQLBoolean,
-        description: 'This is just a placeholder',
-      }
-    }
-
-    const params = {
-      name: node.name.value,
-      description: commentsToDescription(node.comments),
-      fields: () => structFields,
-    }
-
     if (this.isInput) {
+      const structFields: Dict<GraphQLInputFieldConfig> = {}
+      if (node.fields.length) {
+        node.fields.forEach(field => {
+          structFields[field.name.value] = {
+            type: this.convert(field) as GraphQLInputType,
+            description: commentsToDescription(field.comments),
+            defaultValue: field.defaultValue
+              ? this.convertConstValue(field.defaultValue)
+              : undefined,
+          }
+        })
+      } else {
+        // TODO: remove this struct?
+        structFields._ = {
+          type: GraphQLBoolean,
+          description: 'This is just a placeholder',
+        }
+      }
+
       if (!this.inputObjectDict[structKey]) {
-        this.inputObjectDict[structKey] = new GraphQLInputObjectType(params)
+        this.inputObjectDict[structKey] = new GraphQLInputObjectType({
+          name: node.name.value,
+          description: commentsToDescription(node.comments),
+          fields: () => structFields,
+        })
       }
       return this.inputObjectDict[structKey]
     } else {
+      const structFields: Dict<GraphQLFieldConfig<any, any>> = {}
+      if (node.fields.length) {
+        node.fields.forEach(field => {
+          structFields[field.name.value] = {
+            type: this.convert(field) as GraphQLOutputType,
+            description: commentsToDescription(field.comments),
+          }
+        })
+      } else {
+        // TODO: remove this struct?
+        structFields._ = {
+          type: GraphQLBoolean,
+          description: 'This is just a placeholder',
+        }
+      }
+
       if (!this.objectDict[structKey]) {
-        this.objectDict[structKey] = new GraphQLObjectType(params)
+        this.objectDict[structKey] = new GraphQLObjectType({
+          name: node.name.value,
+          description: commentsToDescription(node.comments),
+          fields: () => structFields,
+        })
       }
       return this.objectDict[structKey]
     }

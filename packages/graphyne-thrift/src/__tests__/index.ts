@@ -55,7 +55,7 @@ test('struct', () => {
   expect(fields.op.type).toBeInstanceOf(GraphQLEnumType)
   expect(fields.comment.type).toBe(GraphQLString)
 
-  // expect(fields.num1.defaultValue).toBe(1)
+  expect(fields.num1.defaultValue).toBe(0)
   expect(fields.op.description).toBe('op')
 
   const enumType = fields.op.type as GraphQLEnumType
