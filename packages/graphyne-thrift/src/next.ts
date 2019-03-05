@@ -1,6 +1,7 @@
 import fs from 'fs'
 import assert from 'assert'
 import path from 'path'
+import { upperFirst, camelCase } from 'lodash'
 import {
   parse,
   ThriftDocument,
@@ -36,6 +37,7 @@ import {
   GraphQLObjectType,
   GraphQLInputFieldConfig,
   GraphQLFieldConfig,
+  GraphQLFieldResolver,
 } from 'graphql'
 import { commentsToDescription } from './utils'
 import { GraphqlInt64, GraphqlMap, GraphqlSet } from './types'
@@ -60,12 +62,25 @@ interface ConvertOptions {
   isInput: boolean
 }
 
+export type GetTypeName = (options: {
+  file: string
+  name: string
+  isEnum: boolean
+  isInput: boolean
+}) => string
+
 export interface GraphqlTypeGeneratorOptions {
   basePath: string
   /**
    * Convert Thrift Enum to GraphQL int
    */
   convertEnumToInt?: boolean
+  /**
+   * GraphQL type name rule
+   *
+   * The default is {fileName} + {typeName}, then apply pascal case
+   */
+  getTypeName?: GetTypeName
 }
 
 export class GraphqlTypeGenerator {
@@ -76,11 +91,23 @@ export class GraphqlTypeGenerator {
 
   private basePath: string
   private convertEnumToInt = false
+  private getTypeName: GetTypeName = options => {
+    const fullName = path.basename(options.file, '.thrift') + '_' + options.name
+    // Pascal case
+    return upperFirst(camelCase(fullName))
+  }
 
-  constructor({ basePath, convertEnumToInt }: GraphqlTypeGeneratorOptions) {
+  constructor({
+    basePath,
+    convertEnumToInt,
+    getTypeName,
+  }: GraphqlTypeGeneratorOptions) {
     this.basePath = basePath
     if (typeof convertEnumToInt !== 'undefined') {
       this.convertEnumToInt = convertEnumToInt
+    }
+    if (typeof getTypeName !== 'undefined') {
+      this.getTypeName = getTypeName
     }
   }
 
@@ -148,7 +175,12 @@ export class GraphqlTypeGenerator {
       })
 
       this.enumDict[enumKey] = new GraphQLEnumType({
-        name: node.name.value,
+        name: this.getTypeName({
+          name: node.name.value,
+          file: options.file,
+          isInput: options.isInput,
+          isEnum: true,
+        }),
         description: commentsToDescription(node.comments),
         values: enumValues,
       })
@@ -186,7 +218,12 @@ export class GraphqlTypeGenerator {
 
       if (!this.inputObjectDict[structKey]) {
         this.inputObjectDict[structKey] = new GraphQLInputObjectType({
-          name: node.name.value + 'Input',
+          name: this.getTypeName({
+            file: options.file,
+            name: node.name.value,
+            isInput: options.isInput,
+            isEnum: false,
+          }),
           description: commentsToDescription(node.comments),
           fields: () => structFields,
         })
@@ -211,9 +248,12 @@ export class GraphqlTypeGenerator {
 
       if (!this.objectDict[structKey]) {
         this.objectDict[structKey] = new GraphQLObjectType({
-          // TODO: name conflict
-          // options.file.replace(/[\/\.]/g, '_') +
-          name: node.name.value,
+          name: this.getTypeName({
+            file: options.file,
+            name: node.name.value,
+            isInput: options.isInput,
+            isEnum: false,
+          }),
           description: commentsToDescription(node.comments),
           fields: () => structFields,
         })
@@ -312,9 +352,11 @@ export class GraphqlTypeGenerator {
   fromThriftFunction({
     file,
     identifier,
+    resolve,
   }: {
     file: string
     identifier: string
+    resolve?: GraphQLFieldResolver<any, any> // TODO: type
   }): GraphQLFieldConfig<any, any> {
     this.loadThriftFile(file)
     const ast = this.astMapping[file]
@@ -348,6 +390,7 @@ export class GraphqlTypeGenerator {
       }) as GraphQLOutputType,
       description: commentsToDescription(funcDef.comments),
       args: queryArgs,
+      resolve: resolve,
     }
   }
 }

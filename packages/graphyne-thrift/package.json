@@ -19,7 +19,9 @@
   },
   "dependencies": {
     "@creditkarma/thrift-parser": "^1.1.4",
-    "@types/node": "^10.12.18"
+    "@types/lodash": "^4.14.122",
+    "@types/node": "^10.12.18",
+    "lodash": "^4.17.11"
   },
   "peerDependencies": {
     "graphql": "^14.0.0"
