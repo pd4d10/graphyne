@@ -1,6 +1,7 @@
 import fs from 'fs'
 import assert from 'assert'
 import path from 'path'
+import _debug from 'debug'
 import { upperFirst, camelCase } from 'lodash'
 import {
   parse,
@@ -41,6 +42,8 @@ import {
 } from 'graphql'
 import { commentsToDescription } from './utils'
 import { GraphqlInt64, GraphqlMap, GraphqlSet } from './types'
+
+const debug = _debug('graphyne')
 
 type MyNode =
   | StructDefinition
@@ -113,7 +116,7 @@ export class GraphqlTypeGenerator {
 
   private loadThriftFile(file: string) {
     if (this.astMapping[file]) {
-      console.log(file + ' already loaded, skipping...')
+      debug(`File already loaded, skipping: ${file}`)
       return
     }
 
